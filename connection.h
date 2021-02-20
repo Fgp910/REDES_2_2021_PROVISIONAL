@@ -1,7 +1,13 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
-typedef void (*service_launcher_type)(int); /* Prototipo de funcion de servicio*/
+/**
+ * Prototipo de funcion de servicio.
+ *
+ * Argumentos:
+ *  El descriptor del socket de conexion.
+ */
+typedef void (*service_launcher_type)(int);
 
 /**
  * initiate_tcp_server
