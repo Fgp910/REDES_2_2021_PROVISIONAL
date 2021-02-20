@@ -6,7 +6,7 @@ all: server_test clean
 .PHONY: clean
 
 server_test: server_test.o connection.o
-	$(CC) -o $@ $^
+	$(CC) -o $@.exe $^
 
 
 server_test.o: server_test.c connection.h
