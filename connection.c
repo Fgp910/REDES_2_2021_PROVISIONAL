@@ -17,7 +17,7 @@ int initiate_tcp_server(int port, int listen_queue_size) {
         exit(EXIT_FAILURE);
     }
 
-    syslog(LOG_INFO, "Creating TCP socket");
+    syslog(LOG_INFO, "Creating TCP socket...");
     if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         syslog(LOG_ERR, "Error creating socket: %s", strerror(errno));
         exit(EXIT_FAILURE);
@@ -28,13 +28,13 @@ int initiate_tcp_server(int port, int listen_queue_size) {
     sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     bzero((void*)&(sockaddr.sin_zero), 8);
 
-    syslog(LOG_INFO, "Binding socket");
+    syslog(LOG_INFO, "Binding socket...");
     if (bind(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) {
         syslog(LOG_ERR, "Error binding socket: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    syslog(LOG_INFO, "Listening connections");
+    syslog(LOG_INFO, "Listening connections...");
     if (listen(sockfd, listen_queue_size) < 0) {
         syslog(LOG_ERR, "Error listening: %s", strerror(errno));
         exit(EXIT_FAILURE);
@@ -43,7 +43,7 @@ int initiate_tcp_server(int port, int listen_queue_size) {
     return sockfd;
 }
 
-void accept_connection(int sockfd) {
+void accept_connection(int sockfd, service_launcher_type launch_service) {
     int confd, conlen;
     struct sockaddr connection;
 
@@ -59,8 +59,8 @@ void accept_connection(int sockfd) {
         exit(EXIT_FAILURE);
     }
 
-    /* Haz algo */
-    /* Espera a que termine */
+    launch_service(sockfd);
+    wait();
 
     return;
 }

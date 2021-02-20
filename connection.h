@@ -1,6 +1,8 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
+typedef void (*service_launcher_type)(int); /* Prototipo de funcion de servicio*/
+
 /**
  * initiate_tcp_server
  *
@@ -27,8 +29,9 @@ int initiate_tcp_server(int port, int listen_queue_size);
  *
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
+ *  launch_service - el lanzador del servicio a realizar.
  */
-void accept_connection(int sockfd);
+void accept_connection(int sockfd, service_launcher_type launch_service);
 
 
 
