@@ -1,8 +1,11 @@
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
+#include <unistd.h>
 #include <errno.h>
 #include "connection.h"
 
@@ -54,13 +57,14 @@ void accept_connection(int sockfd, service_launcher_type launch_service) {
 
     conlen = sizeof(connection);
 
-    if ((confd = accept(sockfd, &connection, &conlen)) < 0) {
+    if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
         syslog(LOG_ERR, "Error accepting connection: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    launch_service(sockfd);
-    wait();
+    launch_service(confd);
+    wait(NULL);
+    close(confd);
 
     return;
 }
