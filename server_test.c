@@ -11,7 +11,7 @@
 #define STR_LEN 128
 
 void my_launcher(int confd) {
-    int pid;
+    int pid, nbytes;
     char auxstr[STR_LEN], resp[STR_LEN];
 
     pid = fork();
@@ -19,12 +19,13 @@ void my_launcher(int confd) {
     if (pid > 0) return;
 
     syslog(LOG_INFO, "Processing request...");
-    if (recv(confd, &auxstr, (STR_LEN - 1)*sizeof(char), 0) < 0) {
+    if ( (nbytes = recv(confd, &auxstr, (STR_LEN - 1)*sizeof(char), 0)) < 0) {
         syslog(LOG_ERR, "Error processing request");
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "%s\n", auxstr);
-    sprintf(resp, "%s has %ld characters.", auxstr, strlen(auxstr));
+    auxstr[nbytes] = '\0';
+
+    sprintf(resp, "\'%s\' has %ld characters.", auxstr, strlen(auxstr));
     if (send(confd, &resp, (strlen(resp) + 1)*sizeof(char), 0) < 0) {
         syslog(LOG_ERR, "Error sending result");
         exit(EXIT_FAILURE);
