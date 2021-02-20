@@ -10,7 +10,7 @@ extern int errno;
 
 int initiate_tcp_server(int port, int listen_queue_size) {
     int sockfd;
-    struct sockaddr_in sockaddr;
+    struct sockaddr_in addr;
 
     if (port < 0 || listen_queue_size < 0) {
         syslog(LOG_ERR, "Invalid arguments");
@@ -23,13 +23,13 @@ int initiate_tcp_server(int port, int listen_queue_size) {
         exit(EXIT_FAILURE);
     }
 
-    sockaddr.sin_family = AF_INET; /* Familia TCP/IP */
-    sockaddr.sin_port = htons(port);
-    sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    bzero((void*)&(sockaddr.sin_zero), 8);
+    addr.sin_family = AF_INET; /* Familia TCP/IP */
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    bzero((void*)&(addr.sin_zero), 8);
 
     syslog(LOG_INFO, "Binding socket...");
-    if (bind(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) {
+    if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         syslog(LOG_ERR, "Error binding socket: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
