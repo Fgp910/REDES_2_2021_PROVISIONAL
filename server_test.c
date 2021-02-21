@@ -11,12 +11,8 @@
 #define STR_LEN 128
 
 void my_launcher(int confd) {
-    int pid, nbytes;
+    int nbytes;
     char auxstr[STR_LEN], resp[STR_LEN];
-
-    pid = fork();
-    if (pid < 0) exit(EXIT_FAILURE);
-    if (pid > 0) return;
 
     syslog(LOG_INFO, "Processing request...");
     if ( (nbytes = recv(confd, &auxstr, (STR_LEN - 1)*sizeof(char), 0)) < 0) {
@@ -33,7 +29,6 @@ void my_launcher(int confd) {
 
     close(confd);
     syslog(LOG_INFO, "Exiting service...");
-    exit(EXIT_SUCCESS);
 }
 
 int main() {
@@ -41,9 +36,7 @@ int main() {
 
     listenfd = initiate_tcp_server(8080, 1);
 
-    for ( ; ; ) {
-        accept_connection(listenfd, my_launcher);
-    }
+    accept_connections_fork(listenfd, my_launcher);
 
     exit(EXIT_SUCCESS);
 }
