@@ -8,7 +8,8 @@
  *
  * Descripcion: El proceso que la llama realiza el servicio. Es ejecutada
  * tipicamente por los procesos hijos. Planeada para ser argumento de
- * accept_connections_fork().
+ * accept_connections_fork(). Es importante que el proceso que ejecuta esta
+ * funcion no finalice su ejecucion dentro de ella.
  *
  * Argumentos:
  *  El descriptor del socket de conexion.
