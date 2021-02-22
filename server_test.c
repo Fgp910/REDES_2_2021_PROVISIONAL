@@ -6,9 +6,12 @@
 #include <ctype.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <errno.h>
 #include "connection.h"
 
 #define STR_LEN 128
+
+extern int errno;
 
 void my_launcher(int confd) {
     int nbytes;
@@ -17,6 +20,7 @@ void my_launcher(int confd) {
     syslog(LOG_INFO, "Processing request...");
     if ( (nbytes = recv(confd, &auxstr, (STR_LEN - 1)*sizeof(char), 0)) < 0) {
         syslog(LOG_ERR, "Error processing request");
+        printf("%s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
     auxstr[nbytes] = '\0';

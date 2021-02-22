@@ -155,7 +155,6 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
             {
                 syslog(LOG_ERR, "Error creating thread: %s", strerror(errno));
             }
-            close(confd);
         }
     }
 }
@@ -174,7 +173,6 @@ void thread_serve(void *args) {
     if (!error) cast->launch_service(cast->confd);
 
     sem_post(thread_sem);
-    sem_close(thread_sem);
     close(cast->confd);
     if (error) {
         syslog(LOG_ERR, "Thread: Error detaching self: %s", strerror(errno));
