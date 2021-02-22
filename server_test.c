@@ -36,7 +36,7 @@ int main() {
 
     listenfd = initiate_tcp_server(8080, 1);
 
-    accept_connections_fork(listenfd, my_launcher);
+    accept_connections_thread(listenfd, my_launcher, 4);
 
     exit(EXIT_SUCCESS);
 }

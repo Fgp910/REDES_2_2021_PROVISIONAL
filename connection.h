@@ -2,14 +2,15 @@
 #define CONNECTION_H
 
 #define MAX_CHLD 32
+#define MAX_THRD 32
 
 /**
  * Prototipo de funcion de servicio.
  *
  * Descripcion: El proceso que la llama realiza el servicio. Es ejecutada
  * tipicamente por los procesos hijos. Planeada para ser argumento de
- * accept_connections_fork(). Es importante que el proceso que ejecuta esta
- * funcion no finalice su ejecucion dentro de ella.
+ * accept_connections(). Es importante que el proceso que ejecuta esta funcion
+ * no finalice su ejecucion dentro de ella.
  *
  * Argumentos:
  *  El descriptor del socket de conexion.
@@ -46,6 +47,22 @@ int initiate_tcp_server(int port, int listen_queue_size);
  */
 void accept_connections_fork(int sockfd, service_launcher_type launch_service,
         int max_children);
+
+/**
+ * accept_connections_thread
+ *
+ * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
+ * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
+ * correspondiente. Es bloqueande en caso de no haber conexiones pendientes. El
+ * proceso principal genera un hilo por cada peticion que atiende.
+ *
+ * Argumentos:
+ *  sockfd - el descriptor del socket de escucha.
+ *  launch_service - el lanzador del servicio a realizar.
+ *  max_threads - el numero maximo de hilos a generar.
+ */
+void accept_connections_thread(int sockfd, service_launcher_type launch_service,
+        int max_threads);
 
 
 #endif
