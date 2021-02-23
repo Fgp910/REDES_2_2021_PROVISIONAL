@@ -14,6 +14,7 @@
 #include "connection.h"
 
 extern int errno;
+static volatile sig_atomic_t sig_flag = 0; /* Almacena la ultima sennal */
 static pid_t *children_pid = NULL; /* Almacena los pid de los procesos hijo */
 static sem_t *fork_sem; /* Semaforo para accept_connections_fork */
 static sem_t *thread_sem; /* Semaforo para accept_connections_thread */
@@ -25,8 +26,11 @@ typedef struct {
 } thread_args;
 
 /* Funciones Privadas */
-/*void sig_int(int signo); * Handler de SIGINT */
+void sig_int(int signo);        /* Handler de SIGINT */
+int set_sig_int();              /* Define sig_int como handler de SIGINT */
+int block_sigint();             /* Bloquea SIGINT */
 void thread_serve(void *args);  /* Funcion para hilos de servicio */
+void stop_server_thread(int sockfd); /* Detiene el servidor multihilo */
 
 int initiate_tcp_server(int port, int listen_queue_size) {
     int sockfd;
@@ -130,6 +134,12 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
         exit(EXIT_FAILURE);
     }
 
+    if (set_sig_int() < 0) {
+        syslog(LOG_ERR, "Error setting SIGINT handler: %s", strerror(errno));
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
     /* Semaforo para evitar aceptar mas de max_threads conexiones */
     if ( (thread_sem = sem_open("/thread_sem", O_CREAT | O_EXCL, S_IRUSR |
                     S_IWUSR, max_threads)) == SEM_FAILED) {
@@ -145,8 +155,12 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
         thread_args args;
 
         sem_wait(thread_sem); /* Espera a que finalicen los max_threads hijos */
+        if (sig_flag == SIGINT) stop_server_thread(sockfd);
 
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
+            if (confd == EINTR && sig_flag == SIGINT) {
+                stop_server_thread(sockfd);
+            }
             syslog(LOG_ERR, "Error accepting connection: %s", strerror(errno));
         } else {
             args.confd = confd;
@@ -160,23 +174,46 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
 }
 
 /* Implementacion de Funciones Privadas */
-/*void sig_int(int signo) {
+void sig_int(int signo) { sig_flag = SIGINT; }
 
-}*/
+int set_sig_int() {
+    struct sigaction s_int;
+
+    s_int.sa_handler = sig_int;
+    s_int.sa_flags = 0;
+    sigemptyset(&(s_int.sa_mask));
+
+    return sigaction(SIGINT, &s_int, NULL);
+}
+
+int block_sigint() {
+    sigset_t set;
+
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+
+    return sigprocmask(SIG_BLOCK, &set, NULL);
+}
 
 void thread_serve(void *args) {
     thread_args *cast = (thread_args *)args;
-    int error;
 
-    error = pthread_detach(pthread_self());
+    if (block_sigint() < 0) {
+        syslog(LOG_ERR, "Thread: Error blocking SIGINT: %s", strerror(errno));
+    }
 
-    if (!error) cast->launch_service(cast->confd);
+    if (pthread_detach(pthread_self())) {
+        syslog(LOG_ERR, "Thread: Error detaching self: %s", strerror(errno));
+    } else {
+        cast->launch_service(cast->confd);
+    }
 
     sem_post(thread_sem);
-    close(cast->confd);
-    if (error) {
-        syslog(LOG_ERR, "Thread: Error detaching self: %s", strerror(errno));
-        pthread_exit(NULL);
-    }
     pthread_exit(NULL);
+}
+
+void stop_server_thread(int sockfd) {
+    syslog(LOG_INFO, "Stopping server...");
+    close(sockfd);      /* thread_sem ya fue desligado, con lo que se borra al */
+    exit(EXIT_SUCCESS); /* finalizar los hilos junto al proceso */
 }
