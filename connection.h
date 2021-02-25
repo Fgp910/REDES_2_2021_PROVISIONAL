@@ -33,12 +33,26 @@ typedef void (*service_launcher_type)(int);
 int initiate_tcp_server(int port, int listen_queue_size);
 
 /**
+ * accept_connections
+ *
+ * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
+ * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
+ * correspondiente. Es bloqueande en caso de no haber conexiones pendientes.
+ * Acepta y atiende las conexiones de forma iterativa.
+ *
+ * Argumentos:
+ *  sockfd - el descriptor del socket de escucha.
+ *  launch_service - el lanzador del servicio a realizar.
+ */
+void accept_connections(int sockfd, service_launcher_type launch_service);
+
+/**
  * accept_connections_fork
  *
  * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
  * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
- * correspondiente. Es bloqueande en caso de no haber conexiones pendientes. El
- * proceso principal genera un proceso hijo por cada peticion que atiende.
+ * correspondiente. Es bloqueande en caso de no haber conexiones pendientes.
+ * El proceso principal genera un proceso hijo por cada peticion que atiende.
  *
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
@@ -53,8 +67,8 @@ void accept_connections_fork(int sockfd, service_launcher_type launch_service,
  *
  * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
  * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
- * correspondiente. Es bloqueande en caso de no haber conexiones pendientes. El
- * proceso principal genera un hilo por cada peticion que atiende.
+ * correspondiente. Es bloqueande en caso de no haber conexiones pendientes.
+ * El proceso principal genera un hilo por cada peticion que atiende.
  *
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
@@ -69,8 +83,9 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
  *
  * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
  * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
- * correspondiente. Es bloqueande en caso de no haber conexiones pendientes. El
- * proceso principal genera un pool hilos que esperan y atienden las peticiones.
+ * correspondiente. Es bloqueande en caso de no haber conexiones pendientes.
+ * El proceso principal genera un pool hilos que esperan y atienden las
+ * peticiones.
  *
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.

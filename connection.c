@@ -67,6 +67,28 @@ int initiate_tcp_server(int port, int listen_queue_size) {
     return sockfd;
 }
 
+void accept_connections(int sockfd, service_launcher_type launch_service) {
+    int confd, conlen;
+    struct sockaddr connection;
+
+    if (sockfd < 0) {
+        syslog(LOG_ERR, "Invalid socket descriptor");
+        exit(EXIT_FAILURE);
+    }
+
+    conlen = sizeof(connection);
+
+    for ( ; ; ) {
+        if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
+            fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        launch_service(confd);
+        close(confd);
+    }
+}
+
 void accept_connections_fork(int sockfd, service_launcher_type launch_service,
         int max_children) {
     int confd, conlen;
