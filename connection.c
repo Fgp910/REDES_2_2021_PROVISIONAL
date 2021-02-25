@@ -37,13 +37,13 @@ int initiate_tcp_server(int port, int listen_queue_size) {
     struct sockaddr_in addr;
 
     if (port < 0 || listen_queue_size < 0) {
-        syslog(LOG_ERR, "Invalid arguments");
+        fprintf(stderr, "Invalid arguments\n");
         exit(EXIT_FAILURE);
     }
 
-    syslog(LOG_INFO, "Creating TCP socket...");
+    fprintf(stdout, "Creating TCP socket...\n");
     if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        syslog(LOG_ERR, "Error creating socket: %s", strerror(errno));
+        fprintf(stderr, "Error creating socket: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -52,15 +52,15 @@ int initiate_tcp_server(int port, int listen_queue_size) {
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     bzero((void*)&(addr.sin_zero), 8);
 
-    syslog(LOG_INFO, "Binding socket...");
+    fprintf(stdout, "Binding socket...\n");
     if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        syslog(LOG_ERR, "Error binding socket: %s", strerror(errno));
+        fprintf(stderr, "Error binding socket: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    syslog(LOG_INFO, "Listening connections...");
+    fprintf(stdout, "Listening connections...\n");
     if (listen(sockfd, listen_queue_size) < 0) {
-        syslog(LOG_ERR, "Error listening: %s", strerror(errno));
+        fprintf(stderr, "Error listening: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -74,19 +74,19 @@ void accept_connections_fork(int sockfd, service_launcher_type launch_service,
     struct sockaddr connection;
 
     if (sockfd < 0) {
-        syslog(LOG_ERR, "Invalid socket descriptor");
+        fprintf(stderr, "Invalid socket descriptor\n");
         exit(EXIT_FAILURE);
     }
 
     if (max_children < 1 || max_children > MAX_CHLD) {
-        syslog(LOG_ERR, "Invalid maximum children number");
+        fprintf(stderr, "Invalid maximum children number\n");
         exit(EXIT_FAILURE);
     }
 
     /* Semaforo para evitar aceptar mas de max_children conexiones */
     if ((fork_sem = sem_open("/fork_sem", O_CREAT | O_EXCL, S_IRUSR | S_IWUSR,
                     max_children)) == SEM_FAILED) {
-        syslog(LOG_ERR, "Error creating semaphore: %s", strerror(errno));
+        fprintf(stderr, "Error creating semaphore: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
     sem_unlink("/fork_sem");
@@ -97,12 +97,12 @@ void accept_connections_fork(int sockfd, service_launcher_type launch_service,
         sem_wait(fork_sem); /* Espera a que finalicen los max_children hijos */
 
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
-            syslog(LOG_ERR, "Error accepting connection: %s", strerror(errno));
+            fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
 
         if ( (children_pid[n_children] = fork()) < 0) {
-            syslog(LOG_ERR, "Error spawning child: %s", strerror(errno));
+            fprintf(stderr, "Error spawning child: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
 
@@ -124,18 +124,18 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
     struct sockaddr connection;
 
     if (sockfd < 0) {
-        syslog(LOG_ERR, "Invalid socket descriptor");
+        fprintf(stderr, "Invalid socket descriptor\n");
         exit(EXIT_FAILURE);
     }
 
     if (max_threads < 1 || max_threads > MAX_THRD) {
-        syslog(LOG_ERR, "Invalid maximum threads number");
+        fprintf(stderr, "Invalid maximum threads number\n");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
 
     if (set_sig_int() < 0) {
-        syslog(LOG_ERR, "Error setting SIGINT handler: %s", strerror(errno));
+        fprintf(stderr, "Error setting SIGINT handler: %s\n", strerror(errno));
         close(sockfd);
         exit(EXIT_FAILURE);
     }
@@ -143,7 +143,7 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
     /* Semaforo para evitar aceptar mas de max_threads conexiones */
     if ( (thread_sem = sem_open("/thread_sem", O_CREAT | O_EXCL, S_IRUSR |
                     S_IWUSR, max_threads)) == SEM_FAILED) {
-        syslog(LOG_ERR, "Error creating semaphore: %s", strerror(errno));
+        fprintf(stderr, "Error creating semaphore: %s\n", strerror(errno));
         close(sockfd);
         exit(EXIT_FAILURE);
     }
@@ -158,16 +158,72 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
         if (sig_flag == SIGINT) stop_server_thread(sockfd);
 
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
-            if (confd == EINTR && sig_flag == SIGINT) {
+            if (sig_flag == SIGINT) {
                 stop_server_thread(sockfd);
             }
-            syslog(LOG_ERR, "Error accepting connection: %s", strerror(errno));
+            fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
         } else {
             args.confd = confd;
             args.launch_service = launch_service;
             if (pthread_create(&tid, NULL, (void *)&thread_serve, (void *)&args))
             {
-                syslog(LOG_ERR, "Error creating thread: %s", strerror(errno));
+                fprintf(stderr, "Error creating thread: %s\n", strerror(errno));
+            }
+        }
+    }
+}
+
+void accept_connections_pool_thread(int sockfd, service_launcher_type
+        launch_service, int n_threads) {
+    int confd, conlen;
+    pthread_t tid;
+    struct sockaddr connection;
+
+    if (sockfd < 0) {
+        fprintf(stderr, "Invalid socket descriptor\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (n_threads < 1 || n_threads > MAX_THRD) {
+        fprintf(stderr, "Invalid maximum threads number\n");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    if (set_sig_int() < 0) {
+        fprintf(stderr, "Error setting SIGINT handler: %s\n", strerror(errno));
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Semaforo para evitar aceptar mas de n_threads conexiones */
+    if ( (thread_sem = sem_open("/thread_sem", O_CREAT | O_EXCL, S_IRUSR |
+                    S_IWUSR, n_threads)) == SEM_FAILED) {
+        fprintf(stderr, "Error creating semaphore: %s\n", strerror(errno));
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    sem_unlink("/thread_sem");
+
+    conlen = sizeof(connection);
+
+    for ( ; ; ) {
+        thread_args args;
+
+        sem_wait(thread_sem); /* Espera a que finalicen los n_threads hijos */
+        if (sig_flag == SIGINT) stop_server_thread(sockfd);
+
+        if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
+            if (confd == EINTR && sig_flag == SIGINT) {
+                stop_server_thread(sockfd);
+            }
+            fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
+        } else {
+            args.confd = confd;
+            args.launch_service = launch_service;
+            if (pthread_create(&tid, NULL, (void *)&thread_serve, (void *)&args))
+            {
+                fprintf(stderr, "Error creating thread: %s\n", strerror(errno));
             }
         }
     }
@@ -199,11 +255,11 @@ void thread_serve(void *args) {
     thread_args *cast = (thread_args *)args;
 
     if (block_sigint() < 0) {
-        syslog(LOG_ERR, "Thread: Error blocking SIGINT: %s", strerror(errno));
+        fprintf(stderr, "Thread: Error blocking SIGINT: %s\n", strerror(errno));
     }
 
     if (pthread_detach(pthread_self())) {
-        syslog(LOG_ERR, "Thread: Error detaching self: %s", strerror(errno));
+        fprintf(stderr, "Thread: Error detaching self: %s\n", strerror(errno));
     } else {
         cast->launch_service(cast->confd);
     }
@@ -213,7 +269,7 @@ void thread_serve(void *args) {
 }
 
 void stop_server_thread(int sockfd) {
-    syslog(LOG_INFO, "Stopping server...");
+    fprintf(stdout, "\nStopping server...\n");
     close(sockfd);      /* thread_sem ya fue desligado, con lo que se borra al */
     exit(EXIT_SUCCESS); /* finalizar los hilos junto al proceso */
 }
