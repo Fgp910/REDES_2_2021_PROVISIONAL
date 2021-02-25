@@ -1,7 +1,7 @@
 CC = gcc -g
 CFLAGS = -Wall
 
-all: server_test clean
+all: server_test
 
 .PHONY: clean
 
