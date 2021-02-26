@@ -17,22 +17,20 @@ void my_launcher(int confd) {
     int nbytes;
     char auxstr[STR_LEN], resp[STR_LEN];
 
-    syslog(LOG_INFO, "Processing request...");
+    fprintf(stdout, "Processing request...\n");
     if ( (nbytes = recv(confd, &auxstr, (STR_LEN - 1)*sizeof(char), 0)) < 0) {
-        syslog(LOG_ERR, "Error processing request");
-        printf("%s\n", strerror(errno));
+        fprintf(stderr, "Error processing request: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
     auxstr[nbytes] = '\0';
 
     sprintf(resp, "\'%s\' has %ld characters.", auxstr, strlen(auxstr));
     if (send(confd, &resp, (strlen(resp) + 1)*sizeof(char), 0) < 0) {
-        syslog(LOG_ERR, "Error sending result");
+        fprintf(stderr, "Error sending result\n");
         exit(EXIT_FAILURE);
     }
 
-    close(confd);
-    syslog(LOG_INFO, "Exiting service...");
+    fprintf(stdout, "Exiting service...\n");
 }
 
 int main() {
@@ -40,7 +38,7 @@ int main() {
 
     listenfd = initiate_tcp_server(8080, 1);
 
-    accept_connections_thread(listenfd, my_launcher, 4);
+    accept_connections_pool_thread(listenfd, my_launcher, 2);
 
     exit(EXIT_SUCCESS);
 }
