@@ -30,6 +30,7 @@ typedef struct {
 void sig_int(int signo);             /* Handler de SIGINT */
 int set_sig_int();                   /* Define sig_int como handler de SIGINT */
 int block_sigint(sigset_t *oldset);  /* Bloquea SIGINT */
+void stop_server_fork(int status);   /* Detiene el servidor multiproceso */
 void thread_serve(void *args);       /* Funcion para hilos de servicio */
 void stop_server_thread(int sockfd); /* Detiene el servidor multihilo */
 void pool_thread_serve(void *args);  /* Funcion para hilos del pool */
@@ -96,8 +97,9 @@ void accept_connections(int sockfd, service_launcher_t launch_service) {
 void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         int max_children) {
     int confd, conlen;
-    int n_children = 0;
+    int i = 0;
     struct sockaddr connection;
+    pid_t pid;
 
     if (sockfd < 0) {
         fprintf(stderr, "Invalid socket descriptor\n");
@@ -109,10 +111,25 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         exit(EXIT_FAILURE);
     }
 
+    /* Memoria para el array de pids */
+    children_pid = (pid_t*)malloc(max_children*sizeof(pid_t));
+    if (!children_pid) {
+        fprintf(stderr, "Error allocating memory\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /*Comportamiento ante SIGINT */
+    if (set_sig_int() < 0) {
+        fprintf(stderr, "Error setting SIGINT handler: %s\n", strerror(errno));
+        free(children_pid);
+        exit(EXIT_FAILURE);
+    }
+
     /* Semaforo para evitar aceptar mas de max_children conexiones */
     if ((fork_sem = sem_open("/fork_sem", O_CREAT | O_EXCL, S_IRUSR | S_IWUSR,
                     max_children)) == SEM_FAILED) {
         fprintf(stderr, "Error creating semaphore: %s\n", strerror(errno));
+        free(children_pid);
         exit(EXIT_FAILURE);
     }
     sem_unlink("/fork_sem");
@@ -121,23 +138,35 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
 
     for ( ; ; ) {
         sem_wait(fork_sem); /* Espera a que finalicen los max_children hijos */
+        if (sig_flag == SIGINT) stop_server_fork(EXIT_SUCCESS);
+
+        /* Asignacion de una posicion en el array */
+        for (i = 0; i < max_children; i++)
+            if (children_pid[i] == 0) break;
 
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
+            if (sig_flag == SIGINT)
+                stop_server_fork(EXIT_SUCCESS);
             fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
+            stop_server_fork(EXIT_FAILURE);
         }
 
-        if ( (children_pid[n_children] = fork()) < 0) {
+        if ( (pid = fork()) < 0) {
             fprintf(stderr, "Error spawning child: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
+            close(confd);
+            stop_server_fork(EXIT_FAILURE);
         }
 
-        if (children_pid[n_children] == 0) {
+        else if (pid == 0) {
             launch_service(confd);
             sem_post(fork_sem); /* Libera al padre del sem_wait */
             sem_close(fork_sem);
+            children_pid[i] = 0;
             exit(EXIT_SUCCESS);
         }
+
+        else
+            children_pid[i] = pid;
 
         close(confd);
     }
@@ -271,6 +300,12 @@ int block_sigint(sigset_t *oldset) {
     sigaddset(&set, SIGINT);
 
     return sigprocmask(SIG_BLOCK, &set, oldset);
+}
+
+void stop_server_fork(int status) {
+    free(children_pid);
+    sem_close(fork_sem);
+    exit(status);
 }
 
 void thread_serve(void *args) {
