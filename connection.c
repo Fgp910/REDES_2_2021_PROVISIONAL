@@ -18,19 +18,23 @@ static volatile sig_atomic_t sig_flag = 0; /* Almacena la ultima sennal */
 static pid_t *children_pid = NULL; /* Almacena los pid de los procesos hijo */
 static sem_t *fork_sem; /* Semaforo para accept_connections_fork */
 static sem_t *thread_sem; /* Semaforo para accept_connections_thread */
+static pthread_mutex_t pool_thread_mutex; /* Semaforo del pool de hilos */
 
 /* Almacena la informacion necesaria para que un hilo atienda un cliente */
 typedef struct {
-    int confd; /* Descriptor del socket de conexion */
-    service_launcher_type launch_service; /* Servicio a realizar */
+    int sockfd; /* Descriptor del socket de escucha o conexion */
+    service_launcher_t launch_service; /* Servicio a realizar */
 } thread_args;
 
 /* Funciones Privadas */
-void sig_int(int signo);        /* Handler de SIGINT */
-int set_sig_int();              /* Define sig_int como handler de SIGINT */
-int block_sigint();             /* Bloquea SIGINT */
-void thread_serve(void *args);  /* Funcion para hilos de servicio */
+void sig_int(int signo);             /* Handler de SIGINT */
+int set_sig_int();                   /* Define sig_int como handler de SIGINT */
+int block_sigint(sigset_t *oldset);  /* Bloquea SIGINT */
+void thread_serve(void *args);       /* Funcion para hilos de servicio */
 void stop_server_thread(int sockfd); /* Detiene el servidor multihilo */
+void pool_thread_serve(void *args);  /* Funcion para hilos del pool */
+void stop_server_pool_thread(int sockfd, pthread_t *tid, int n_threads,
+        int status);                 /* Detiene el pool de hilos */
 
 int initiate_tcp_server(int port, int listen_queue_size) {
     int sockfd;
@@ -67,7 +71,7 @@ int initiate_tcp_server(int port, int listen_queue_size) {
     return sockfd;
 }
 
-void accept_connections(int sockfd, service_launcher_type launch_service) {
+void accept_connections(int sockfd, service_launcher_t launch_service) {
     int confd, conlen;
     struct sockaddr connection;
 
@@ -89,7 +93,7 @@ void accept_connections(int sockfd, service_launcher_type launch_service) {
     }
 }
 
-void accept_connections_fork(int sockfd, service_launcher_type launch_service,
+void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         int max_children) {
     int confd, conlen;
     int n_children = 0;
@@ -139,7 +143,7 @@ void accept_connections_fork(int sockfd, service_launcher_type launch_service,
     }
 }
 
-void accept_connections_thread(int sockfd, service_launcher_type launch_service,
+void accept_connections_thread(int sockfd, service_launcher_t launch_service,
         int max_threads) {
     int confd, conlen;
     pthread_t tid;
@@ -185,7 +189,7 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
             }
             fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
         } else {
-            args.confd = confd;
+            args.sockfd = confd;
             args.launch_service = launch_service;
             if (pthread_create(&tid, NULL, (void *)&thread_serve, (void *)&args))
             {
@@ -195,11 +199,12 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
     }
 }
 
-void accept_connections_pool_thread(int sockfd, service_launcher_type
+void accept_connections_pool_thread(int sockfd, service_launcher_t
         launch_service, int n_threads) {
-    int confd, conlen;
-    pthread_t tid;
-    struct sockaddr connection;
+    int i;
+    pthread_t tid[MAX_THRD];
+    sigset_t oldset;
+    thread_args args;
 
     if (sockfd < 0) {
         fprintf(stderr, "Invalid socket descriptor\n");
@@ -218,37 +223,32 @@ void accept_connections_pool_thread(int sockfd, service_launcher_type
         exit(EXIT_FAILURE);
     }
 
-    /* Semaforo para evitar aceptar mas de n_threads conexiones */
-    if ( (thread_sem = sem_open("/thread_sem", O_CREAT | O_EXCL, S_IRUSR |
-                    S_IWUSR, n_threads)) == SEM_FAILED) {
-        fprintf(stderr, "Error creating semaphore: %s\n", strerror(errno));
+    if (block_sigint(&oldset) < 0) {
+        fprintf(stderr, "Error blocking SIGINT: %s\n", strerror(errno));
         close(sockfd);
         exit(EXIT_FAILURE);
     }
-    sem_unlink("/thread_sem");
 
-    conlen = sizeof(connection);
+    if (pthread_mutex_init(&pool_thread_mutex, NULL)) {
+        fprintf(stderr, "Error creating thread mutex\n");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
 
-    for ( ; ; ) {
-        thread_args args;
+    args.sockfd = sockfd;
+    args.launch_service = launch_service;
 
-        sem_wait(thread_sem); /* Espera a que finalicen los n_threads hijos */
-        if (sig_flag == SIGINT) stop_server_thread(sockfd);
-
-        if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
-            if (confd == EINTR && sig_flag == SIGINT) {
-                stop_server_thread(sockfd);
-            }
-            fprintf(stderr, "Error accepting connection: %s\n", strerror(errno));
-        } else {
-            args.confd = confd;
-            args.launch_service = launch_service;
-            if (pthread_create(&tid, NULL, (void *)&thread_serve, (void *)&args))
-            {
-                fprintf(stderr, "Error creating thread: %s\n", strerror(errno));
-            }
+    for (i = 0 ; i < n_threads ; i++) {
+        if (pthread_create(&tid[i], NULL, (void *)&pool_thread_serve,
+                    (void *)&args)) {
+            fprintf(stderr, "Error creating thread: %s\n", strerror(errno));
+            stop_server_pool_thread(sockfd, tid, i, EXIT_FAILURE);
         }
     }
+
+    sigsuspend(&oldset); /* Espera a recibir la orden de parar el pool */
+                         /* (por simplicidad, cualquier sennal vale)*/
+    stop_server_pool_thread(sockfd, tid, n_threads, EXIT_SUCCESS);
 }
 
 /* Implementacion de Funciones Privadas */
@@ -264,26 +264,27 @@ int set_sig_int() {
     return sigaction(SIGINT, &s_int, NULL);
 }
 
-int block_sigint() {
+int block_sigint(sigset_t *oldset) {
     sigset_t set;
 
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
 
-    return sigprocmask(SIG_BLOCK, &set, NULL);
+    return sigprocmask(SIG_BLOCK, &set, oldset);
 }
 
 void thread_serve(void *args) {
     thread_args *cast = (thread_args *)args;
 
-    if (block_sigint() < 0) {
+    if (block_sigint(NULL) < 0) {
         fprintf(stderr, "Thread: Error blocking SIGINT: %s\n", strerror(errno));
     }
 
     if (pthread_detach(pthread_self())) {
         fprintf(stderr, "Thread: Error detaching self: %s\n", strerror(errno));
     } else {
-        cast->launch_service(cast->confd);
+        cast->launch_service(cast->sockfd);
+        close(cast->sockfd);
     }
 
     sem_post(thread_sem);
@@ -294,4 +295,43 @@ void stop_server_thread(int sockfd) {
     fprintf(stdout, "\nStopping server...\n");
     close(sockfd);      /* thread_sem ya fue desligado, con lo que se borra al */
     exit(EXIT_SUCCESS); /* finalizar los hilos junto al proceso */
+}
+
+void pool_thread_serve(void *args) {
+    thread_args *cast = (thread_args *)args;
+    int confd, conlen;
+    struct sockaddr connection;
+
+    conlen = sizeof(connection);
+
+    for ( ; ; ) { /* Solo abortamos los hilos cuando esperan conexiones */
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        pthread_mutex_lock(&pool_thread_mutex);
+        if ( (confd = accept(cast->sockfd, &connection, (socklen_t*)&conlen)) < 0) {
+            fprintf(stderr, "Thread: Error accepting connection: %s\n",
+                    strerror(errno));
+        }
+        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+        pthread_mutex_unlock(&pool_thread_mutex);
+
+        cast->launch_service(confd);
+        close(confd);
+    }
+}
+
+void stop_server_pool_thread(int sockfd, pthread_t *tid, int n_threads,
+        int status) {
+    int i;
+
+    for (i = 0; i < n_threads; i++) { /* Cancelamos todos los hilos... */
+        pthread_cancel(tid[i]);
+    }
+
+    for (i = 0; i < n_threads; i++) { /* ... y esperamos a que se unan */
+        pthread_join(tid[i], NULL);
+    }
+
+    pthread_mutex_destroy(&pool_thread_mutex);
+    close(sockfd);
+    exit(status);
 }

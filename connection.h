@@ -10,12 +10,12 @@
  * Descripcion: El proceso que la llama realiza el servicio. Es ejecutada
  * tipicamente por los procesos hijos. Planeada para ser argumento de
  * accept_connections(). Es importante que el proceso que ejecuta esta funcion
- * no finalice su ejecucion dentro de ella.
+ * no finalice su ejecucion dentro de ella y no cierre el descriptor del socket.
  *
  * Argumentos:
  *  El descriptor del socket de conexion.
  */
-typedef void (*service_launcher_type)(int);
+typedef void (*service_launcher_t)(int);
 
 /**
  * initiate_tcp_server
@@ -44,7 +44,7 @@ int initiate_tcp_server(int port, int listen_queue_size);
  *  sockfd - el descriptor del socket de escucha.
  *  launch_service - el lanzador del servicio a realizar.
  */
-void accept_connections(int sockfd, service_launcher_type launch_service);
+void accept_connections(int sockfd, service_launcher_t launch_service);
 
 /**
  * accept_connections_fork
@@ -59,7 +59,7 @@ void accept_connections(int sockfd, service_launcher_type launch_service);
  *  launch_service - el lanzador del servicio a realizar.
  *  max_children - el numero maximo de procesos hijos a generar.
  */
-void accept_connections_fork(int sockfd, service_launcher_type launch_service,
+void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         int max_children);
 
 /**
@@ -75,7 +75,7 @@ void accept_connections_fork(int sockfd, service_launcher_type launch_service,
  *  launch_service - el lanzador del servicio a realizar.
  *  max_threads - el numero maximo de hilos a generar.
  */
-void accept_connections_thread(int sockfd, service_launcher_type launch_service,
+void accept_connections_thread(int sockfd, service_launcher_t launch_service,
         int max_threads);
 
 /**
@@ -92,7 +92,7 @@ void accept_connections_thread(int sockfd, service_launcher_type launch_service,
  *  launch_service - el lanzador del servicio a realizar.
  *  n_threads - el numero de hilos a generar.
  */
-void accept_connections_pool_thread(int sockfd, service_launcher_type
+void accept_connections_pool_thread(int sockfd, service_launcher_t
         launch_service, int n_threads);
 
 #endif
