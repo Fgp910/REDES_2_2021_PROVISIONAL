@@ -46,8 +46,12 @@ int initiate_tcp_server(int port, int listen_queue_size, int daemon) {
         exit(EXIT_FAILURE);
     }
 
-    if (daemon) set_logger_type(LOG);
-    else set_logger_type(STD);
+    if (daemon) {
+        set_logger_type(LOG);
+        daemonize();
+    } else {
+        set_logger_type(STD);
+    }
 
     logger(INFO, "Creating TCP socket...\n");
     if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
