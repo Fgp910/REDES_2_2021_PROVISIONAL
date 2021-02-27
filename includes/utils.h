@@ -71,4 +71,12 @@ void set_logger_type(int type);
  */
 void logger(int out, const char *format, ...);
 
+/**
+ * daemonize
+ *
+ * Descripcion: Crea un proceso demonio. A efectos practicos, el proceso que la
+ * llama se "demoniza".
+ */
+void daemonize();
+
 #endif

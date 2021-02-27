@@ -1,7 +1,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <syslog.h>
+#include <unistd.h>
 
 #include "utils.h"
 
@@ -60,4 +63,33 @@ void logger(int out, const char *format, ...) {
             break;
     }
     va_end(args);
+}
+
+void daemonize() {
+    pid_t pid;
+
+    pid = fork();
+    if (pid < 0) exit(EXIT_FAILURE);
+    if (pid > 0) exit(EXIT_SUCCESS); /* El padre termina */
+
+    umask(0);
+    setlogmask(LOG_UPTO(LOG_INFO));
+    openlog("Server system messages:", LOG_CONS | LOG_PID | LOG_NDELAY,
+            LOG_LOCAL3);
+    syslog(LOG_ERR, "Ininitating new server...");
+
+    if (setsid() < 0) { /* Crea nuevo SID para el proceso hijo */
+        logger(ERR, "Error creating a new SID for the child process\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if ((chdir("/")) < 0) { /* Cambia el direciorio de trabajo actual */
+        logger(ERR, "Error changing the current working directory = \"/\"\n");
+        exit(EXIT_FAILURE);
+    }
+
+    syslog(LOG_INFO, "Closing standard file descriptors...");
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
 }
