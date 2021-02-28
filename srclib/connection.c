@@ -261,14 +261,14 @@ void accept_connections_pool_thread(int sockfd, service_launcher_t
         exit(EXIT_FAILURE);
     }
 
-    if (set_sig_int(sig_int) < 0) {
-        logger(ERR, "Error setting SIGINT handler: %s\n", strerror(errno));
+    if (block_sigint_thread(&oldset) < 0) {
+        logger(ERR, "Error blocking SIGINT: %s\n", strerror(errno));
         close(sockfd);
         exit(EXIT_FAILURE);
     }
 
-    if (block_sigint(&oldset) < 0) {
-        logger(ERR, "Error blocking SIGINT: %s\n", strerror(errno));
+    if (set_sig_int(sig_int) < 0) {
+        logger(ERR, "Error setting SIGINT handler: %s\n", strerror(errno));
         close(sockfd);
         exit(EXIT_FAILURE);
     }
@@ -307,7 +307,7 @@ void stop_server_fork(int status) {
 void thread_serve(void *args) {
     thread_args *cast = (thread_args *)args;
 
-    if (block_sigint(NULL) < 0) {
+    if (block_sigint_thread(NULL) < 0) {
         logger(ERR, "Thread: Error blocking SIGINT: %s\n", strerror(errno));
     }
 
@@ -335,6 +335,8 @@ void pool_thread_serve(void *args) {
 
     conlen = sizeof(connection);
 
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
     for ( ; ; ) { /* Solo abortamos los hilos cuando esperan conexiones */
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
         pthread_mutex_lock(&pool_thread_mutex);
@@ -353,6 +355,8 @@ void pool_thread_serve(void *args) {
 void stop_server_pool_thread(int sockfd, pthread_t *tid, int n_threads,
         int status) {
     int i;
+
+    logger(INFO, "\nStopping server...\n");
 
     for (i = 0; i < n_threads; i++) { /* Cancelamos todos los hilos... */
         pthread_cancel(tid[i]);
