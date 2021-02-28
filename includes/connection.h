@@ -29,7 +29,7 @@ typedef void (*service_launcher_t)(int);
  *  daemon - 1 si el servidor debe ejecutarse como proceso demonio, 0 si no.
  *
  * Salida:
- *  El descriptor del socket creado.
+ *  El descriptor del socket creado o -1 en caso de error.
  */
 int initiate_tcp_server(int port, int listen_queue_size, int daemon);
 

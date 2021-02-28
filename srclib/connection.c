@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -43,7 +44,7 @@ int initiate_tcp_server(int port, int listen_queue_size, int daemon) {
 
     if (port < 0 || listen_queue_size < 0 || (daemon != 0 && daemon != 1)) {
         logger(ERR, "Invalid arguments\n");
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     if (daemon) {
@@ -56,7 +57,7 @@ int initiate_tcp_server(int port, int listen_queue_size, int daemon) {
     logger(INFO, "Creating TCP socket...\n");
     if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         logger(ERR, "Error creating socket: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     addr.sin_family = AF_INET; /* Familia TCP/IP */
@@ -67,13 +68,15 @@ int initiate_tcp_server(int port, int listen_queue_size, int daemon) {
     logger(INFO, "Binding socket...\n");
     if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         logger(ERR, "Error binding socket: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
+        close(sockfd);
+        return -1;
     }
 
     logger(INFO, "Listening connections...\n");
     if (listen(sockfd, listen_queue_size) < 0) {
         logger(ERR, "Error listening: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
+        close(sockfd);
+        return -1;
     }
 
     return sockfd;
@@ -93,7 +96,6 @@ void accept_connections(int sockfd, service_launcher_t launch_service) {
     for ( ; ; ) {
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
             logger(ERR, "Error accepting connection: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
         }
 
         launch_service(confd);
