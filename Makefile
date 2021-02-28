@@ -11,8 +11,8 @@ all: server_test
 
 .PHONY: clean
 
-server_test: $(OBJ)server_test.o $(LIB)libgenericserver.a
-	$(CC) -o $@.exe $< -pthread -L$(LIB) -lgenericserver
+server_test: $(OBJ)server_test.o $(LIB)libgenericserver.a $(OBJ)picohttpparser.o
+	$(CC) -o $@.exe $< $(OBJ)picohttpparser.o -pthread -L$(LIB) -lgenericserver
 
 # Library #
 $(LIB)libgenericserver.a: $(OBJ)connection.o $(OBJ)utils.o
@@ -26,6 +26,9 @@ $(OBJ)connection.o: $(SLIB)connection.c $(INC)connection.h $(INC)utils.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJ)utils.o: $(SLIB)utils.c $(INC)utils.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ)picohttpparser.o: $(SRC)picohttpparser.c $(INC)picohttpparser.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 
