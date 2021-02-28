@@ -153,7 +153,7 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
 
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
             if (sig_flag == SIGINT)
-                stop_server_fork(EXIT_SUCCESS);
+                break;
             logger(ERR, "Error accepting connection: %s\n", strerror(errno));
             stop_server_fork(EXIT_FAILURE);
         }
@@ -177,6 +177,14 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
 
         close(confd);
     }
+
+    for (i = 0; i < max_children; i++) {
+        if (children_pid[i] > 0) {
+            if (kill(children_pid[i], SIGKILL) == -1)
+                logger(ERR, "Error killing child process\n");
+        }
+    }
+    stop_server_fork(EXIT_SUCCESS);
 }
 
 void accept_connections_thread(int sockfd, service_launcher_t launch_service,
