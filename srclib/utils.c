@@ -19,6 +19,15 @@ int block_sigint(sigset_t *oldset) {
     return sigprocmask(SIG_BLOCK, &set, oldset);
 }
 
+int block_sigint_thread(sigset_t *oldset) {
+    sigset_t set;
+
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+
+    return pthread_sigmask(SIG_BLOCK, &set, oldset);
+}
+
 int set_sig_int(handler_t handler) {
     struct sigaction s_int;
 

@@ -22,7 +22,21 @@ typedef void (*handler_t)(int);
 /**
  * block_sigint
  *
- * Descripcion: Bloquea la sennal SIGINT.
+ * Descripcion: Bloquea la sennal SIGINT en la mascara de sennales del proceso.
+ *
+ * Argumentos:
+ *  oldset - si es no nulo, almacena la mascara de sennales del proceso antes de
+ *  la llamada.
+ *
+ * Salida:
+ *  0 en caso de exito, -1 en otro caso.
+ */
+int block_sigint(sigset_t *oldset);
+
+/**
+ * block_sigint_thread
+ *
+ * Descripcion: Bloquea la sennal SIGINT en la mascara de sennales del hilo.
  *
  * Argumentos:
  *  oldset - si es no nulo, almacena la mascara de sennales del hilo antes de la
@@ -31,7 +45,7 @@ typedef void (*handler_t)(int);
  * Salida:
  *  0 en caso de exito, -1 en otro caso.
  */
-int block_sigint(sigset_t *oldset);
+int block_sigint_thread(sigset_t *oldset);
 
 /**
  * set_sig_int
