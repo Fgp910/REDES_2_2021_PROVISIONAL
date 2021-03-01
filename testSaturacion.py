@@ -13,6 +13,12 @@ def conection():
 	print ('Desde el servidor: {}'.format(modifedSentence.decode()))
 	clientSocket.close()
 
-for i in range(5000):
+threads = []
+
+for i in range(20000):
 	x = threading.Thread(target=conection)
 	x.start()
+	threads.append(x)
+
+for x in threads:
+	x.join()

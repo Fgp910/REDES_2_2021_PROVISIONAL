@@ -85,7 +85,7 @@ int main() {
 
     listenfd = initiate_tcp_server(8080, 1, 0);
 
-    accept_connections(listenfd, http_parser_test);
+    accept_connections_fork(listenfd, my_launcher, 5);
 
     exit(EXIT_SUCCESS);
 }

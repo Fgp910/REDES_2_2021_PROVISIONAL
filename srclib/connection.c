@@ -171,15 +171,14 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
 
         else if (pid == 0) {
             launch_service(confd);
+            close(confd);
             sem_post(fork_sem); /* Libera al padre del sem_wait */
             sem_close(fork_sem);
             children_pid[i] = 0;
             exit(EXIT_SUCCESS);
         }
 
-        else
-            children_pid[i] = pid;
-
+        children_pid[i] = pid;
         close(confd);
     }
 
@@ -381,6 +380,8 @@ void accept_connections_pool_thread(int sockfd, service_launcher_t
 void sig_int(int signo) { sig_flag = SIGINT; }
 
 void stop_server_fork(int status) {
+    logger(INFO, "\nStopping server...\n");
+
     free(children_pid);
     sem_close(fork_sem);
     exit(status);
@@ -425,6 +426,7 @@ void pool_process_serve(int sockfd, service_launcher_t launch_service) {
         sem_post(pool_process_mutex);
 
         launch_service(confd);
+        close(confd);
     }
 }
 
@@ -455,6 +457,8 @@ void pool_thread_serve(void *args) {
 void stop_server_pool_process(int max_children, int sockfd, sem_t* pool_process_mutex) {
     int i;
     int status = EXIT_SUCCESS;
+
+    logger(INFO, "\nStopping server...\n");
 
     for (i = 0; i < max_children; i++) {
         if (kill(children_pid[i], SIGKILL) < 0) {
