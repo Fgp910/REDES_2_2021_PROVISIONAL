@@ -64,6 +64,23 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         int max_children);
 
 /**
+ * accept_connections_pool_process
+ *
+ * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
+ * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
+ * correspondiente. Es bloqueante en caso de no haber conexiones pendientes.
+ * El proceso principal genera un pool de procesos que esperan y atienden las
+ * peticiones.
+ *
+ * Argumentos:
+ *  sockfd - el descriptor del socket de escucha.
+ *  launch_service - el lanzador del servicio a realizar.
+ *  n_threads - el numero de hilos a generar.
+ */
+void accept_connections_pool_process(int sockfd, service_launcher_t
+        launch_service, int n_threads);
+
+/**
  * accept_connections_thread
  *
  * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
@@ -84,7 +101,7 @@ void accept_connections_thread(int sockfd, service_launcher_t launch_service,
  *
  * Descripcion: Extrae conexiones de la cola de peticiones pendientes del socket
  * de escucha, crea un socket con las propiedades de sockfd y lanza el servicio
- * correspondiente. Es bloqueande en caso de no haber conexiones pendientes.
+ * correspondiente. Es bloqueante en caso de no haber conexiones pendientes.
  * El proceso principal genera un pool hilos que esperan y atienden las
  * peticiones.
  *

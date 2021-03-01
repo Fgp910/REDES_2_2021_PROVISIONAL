@@ -20,6 +20,7 @@ static volatile sig_atomic_t sig_flag = 0; /* Almacena la ultima sennal */
 static pid_t *children_pid = NULL; /* Almacena los pid de los procesos hijo */
 static sem_t *fork_sem; /* Semaforo para accept_connections_fork */
 static sem_t *thread_sem; /* Semaforo para accept_connections_thread */
+static sem_t *pool_process_mutex; /* Semaforo para pool de procesos */
 static pthread_mutex_t pool_thread_mutex; /* Semaforo del pool de hilos */
 
 /* Almacena la informacion necesaria para que un hilo atienda un cliente */
@@ -34,6 +35,9 @@ void sig_int(int signo);             /* Handler de SIGINT */
 void stop_server_fork(int status);   /* Detiene el servidor multiproceso */
 void thread_serve(void *args);       /* Funcion para hilos de servicio */
 void stop_server_thread(int sockfd); /* Detiene el servidor multihilo */
+void pool_process_serve(int sockfd, service_launcher_t launch_service); /* Funcion para procesos en pool */
+void stop_server_pool_process(int max_children, int sockfd,
+        sem_t* pool_process_mutex);  /* Detiene el pool de procesos */
 void pool_thread_serve(void *args);  /* Funcion para hilos del pool */
 void stop_server_pool_thread(int sockfd, pthread_t *tid, int n_threads,
         int status);                 /* Detiene el pool de hilos */
@@ -120,17 +124,16 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         exit(EXIT_FAILURE);
     }
 
+    /*Comportamiento ante SIGINT */
+    if (set_sig_int(sig_int) < 0) {
+        logger(ERR, "Error setting SIGINT handler: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
     /* Memoria para el array de pids */
     children_pid = (pid_t*)malloc(max_children*sizeof(pid_t));
     if (!children_pid) {
         logger(ERR, "Error allocating memory\n");
-        exit(EXIT_FAILURE);
-    }
-
-    /*Comportamiento ante SIGINT */
-    if (set_sig_int(sig_int) < 0) {
-        logger(ERR, "Error setting SIGINT handler: %s\n", strerror(errno));
-        free(children_pid);
         exit(EXIT_FAILURE);
     }
 
@@ -245,6 +248,83 @@ void accept_connections_thread(int sockfd, service_launcher_t launch_service,
     }
 }
 
+void accept_connections_pool_process(int sockfd, service_launcher_t launch_service,
+        int max_children) {
+    pid_t pid;
+    int i;
+    sigset_t oldset;
+
+    if (sockfd < 0) {
+        logger(ERR, "Invalid socket descriptor\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (max_children < 1 || max_children > MAX_THRD) {
+        logger(ERR, "Invalid maximum threads number\n");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Bloqueo de SIGINT */
+    if (block_sigint(&oldset) < 0) {
+        logger(ERR, "Error blocking SIGINT: %s", strerror(errno));
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Comportamiento ante SIGINT */
+    if (set_sig_int(sig_int) < 0) {
+        logger(ERR, "Error setting SIGINT handler: %s\n", strerror(errno));
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Memoria para el array de pids */
+    children_pid = (pid_t*)malloc(max_children*sizeof(pid_t));
+    if (!children_pid) {
+        logger(ERR, "Error allocating memory\n");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Semaforo para evitar aceptar mas de max_children conexiones */
+    if ((pool_process_mutex = sem_open("/pool_process_sem", O_CREAT | O_EXCL, S_IRUSR | S_IWUSR,
+                    1)) == SEM_FAILED) {
+        logger(ERR, "Error creating semaphore: %s\n", strerror(errno));
+        free(children_pid);
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    sem_unlink("/pool_process_sem");
+
+
+    /* Creacion de los procesos hijo */
+    for (i = 0; i < max_children; i++) {
+        if ((pid = fork()) < 0) {
+            logger(ERR, "Error spawning child: %s", strerror(errno));
+            close(sockfd);
+            for (i = i-1; i >= 0; i--) {
+                if (kill(children_pid[i], SIGKILL) < 0) {
+                    logger(ERR, "Error killing process");
+                }
+            }
+            free(children_pid);
+            exit(EXIT_FAILURE);
+        }
+
+        if (pid > 0)
+            children_pid[i] = pid;
+
+        else {
+            pool_process_serve(sockfd, launch_service);
+        }
+    }
+
+    /* Espera por SIGINT (u otra señal) y cierre */
+    sigsuspend(&oldset);
+    stop_server_pool_process(max_children, sockfd, pool_process_mutex);
+}
+
 void accept_connections_pool_thread(int sockfd, service_launcher_t
         launch_service, int n_threads) {
     int i;
@@ -330,6 +410,24 @@ void stop_server_thread(int sockfd) {
     exit(EXIT_SUCCESS); /* finalizar los hilos junto al proceso */
 }
 
+void pool_process_serve(int sockfd, service_launcher_t launch_service) {
+    struct sockaddr connection;
+    int confd, conlen;
+
+    conlen = sizeof(connection);
+
+    for ( ; ; ) {
+        sem_wait(pool_process_mutex);
+        if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
+            logger(ERR, "Child process: Error accepting connection: %s\n",
+                    strerror(errno));
+        }
+        sem_post(pool_process_mutex);
+
+        launch_service(confd);
+    }
+}
+
 void pool_thread_serve(void *args) {
     thread_args *cast = (thread_args *)args;
     int confd, conlen;
@@ -352,6 +450,22 @@ void pool_thread_serve(void *args) {
         cast->launch_service(confd);
         close(confd);
     }
+}
+
+void stop_server_pool_process(int max_children, int sockfd, sem_t* pool_process_mutex) {
+    int i;
+    int status = EXIT_SUCCESS;
+
+    for (i = 0; i < max_children; i++) {
+        if (kill(children_pid[i], SIGKILL) < 0) {
+            logger(ERR, "Error killing process");
+            status = EXIT_FAILURE;
+        }
+    }
+    free(children_pid);
+    close(sockfd);
+    sem_close(pool_process_mutex);
+    exit(status);
 }
 
 void stop_server_pool_thread(int sockfd, pthread_t *tid, int n_threads,
