@@ -16,7 +16,7 @@
 
 extern int errno;
 
-void my_launcher(int confd) {
+void my_launcher(int confd, void *args) {
     int nbytes;
     char auxstr[STR_LEN], resp[STR_LEN];
 
@@ -36,7 +36,7 @@ void my_launcher(int confd) {
     fprintf(stdout, "Exiting service...\n");
 }
 
-void http_parser_test(int sock) {
+void http_parser_test(int sock, void *args) {
     char buf[4096];
     const char *method, *path;
     int pret, minor_version;
@@ -85,7 +85,7 @@ int main() {
 
     listenfd = initiate_tcp_server(8080, 1, 0);
 
-    accept_connections_fork(listenfd, my_launcher, 5);
+    accept_connections_fork(listenfd, my_launcher, NULL, 5);
 
     exit(EXIT_SUCCESS);
 }
