@@ -83,7 +83,7 @@ void http_parser_test(int sock) {
 int main() {
     int listenfd;
 
-    listenfd = initiate_tcp_server(8080, 1, 0);
+    listenfd = initiate_tcp_server(8080, 10, 0);
 
     accept_connections_fork(listenfd, my_launcher, 5);
 
