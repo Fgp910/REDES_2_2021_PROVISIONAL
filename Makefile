@@ -7,11 +7,14 @@ SRC = src/
 CC = gcc
 CFLAGS = -Wall -Iincludes
 
-all: server_test
+all: server_test httpserver
 
 .PHONY: clean
 
 server_test: $(OBJ)server_test.o $(LIB)libgenericserver.a $(OBJ)picohttpparser.o
+	$(CC) -o $@.exe $< $(OBJ)picohttpparser.o -pthread -L$(LIB) -lgenericserver
+
+httpserver: $(OBJ)httpserver.o $(LIB)libgenericserver.a $(OBJ)picohttpparser.o
 	$(CC) -o $@.exe $< $(OBJ)picohttpparser.o -pthread -L$(LIB) -lgenericserver
 
 # Library #
@@ -20,6 +23,9 @@ $(LIB)libgenericserver.a: $(OBJ)connection.o $(OBJ)utils.o
 
 # Compile #
 $(OBJ)server_test.o: server_test.c $(INC)connection.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ)httpserver.o: $(SRC)httpserver.c $(INC)connection.h $(INC)utils.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJ)connection.o: $(SLIB)connection.c $(INC)connection.h $(INC)utils.h

@@ -9,13 +9,16 @@
  *
  * Descripcion: El proceso que la llama realiza el servicio. Es ejecutada
  * tipicamente por los procesos hijos. Planeada para ser argumento de
- * accept_connections(). Es importante que el proceso que ejecuta esta funcion
- * no finalice su ejecucion dentro de ella y no cierre el descriptor del socket.
+ * accept_connections().
+ * Es importante que el proceso que ejecuta esta funcion no finalice su
+ * ejecucion dentro de ella y no cierre el descriptor del socket. Sin embargo,
+ * es responsable de liberar los recursos pasados como argumento opcional.
  *
  * Argumentos:
- *  El descriptor del socket de conexion.
+ *  - El descriptor del socket de conexion.
+ *  - Un argumento opcional.
  */
-typedef void (*service_launcher_t)(int);
+typedef void (*service_launcher_t)(int, void*);
 
 /**
  * initiate_tcp_server
@@ -44,8 +47,10 @@ int initiate_tcp_server(int port, int listen_queue_size, int daemon);
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
  *  launch_service - el lanzador del servicio a realizar.
+ *  args - el argumento opcional de launch_service.
  */
-void accept_connections(int sockfd, service_launcher_t launch_service);
+void accept_connections(int sockfd, service_launcher_t launch_service,
+        void *args);
 
 /**
  * accept_connections_fork
@@ -58,10 +63,11 @@ void accept_connections(int sockfd, service_launcher_t launch_service);
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
  *  launch_service - el lanzador del servicio a realizar.
+ *  args - el argumento opcional de launch_service.
  *  max_children - el numero maximo de procesos hijos a generar.
  */
 void accept_connections_fork(int sockfd, service_launcher_t launch_service,
-        int max_children);
+        void * args, int max_children);
 
 /**
  * accept_connections_pool_process
@@ -75,10 +81,11 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
  *  launch_service - el lanzador del servicio a realizar.
+ *  args - el argumento opcional de launch_service.
  *  n_threads - el numero de hilos a generar.
  */
 void accept_connections_pool_process(int sockfd, service_launcher_t
-        launch_service, int n_threads);
+        launch_service, void *args, int n_threads);
 
 /**
  * accept_connections_thread
@@ -91,10 +98,11 @@ void accept_connections_pool_process(int sockfd, service_launcher_t
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
  *  launch_service - el lanzador del servicio a realizar.
+ *  args - el argumento opcional de launch_service.
  *  max_threads - el numero maximo de hilos a generar.
  */
 void accept_connections_thread(int sockfd, service_launcher_t launch_service,
-        int max_threads);
+        void *args, int max_threads);
 
 /**
  * accept_connections_pool_thread
@@ -108,9 +116,10 @@ void accept_connections_thread(int sockfd, service_launcher_t launch_service,
  * Argumentos:
  *  sockfd - el descriptor del socket de escucha.
  *  launch_service - el lanzador del servicio a realizar.
+ *  args - el argumento opcional de launch_service.
  *  n_threads - el numero de hilos a generar.
  */
 void accept_connections_pool_thread(int sockfd, service_launcher_t
-        launch_service, int n_threads);
+        launch_service, void *args, int n_threads);
 
 #endif

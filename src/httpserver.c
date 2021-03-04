@@ -16,26 +16,6 @@
 
 extern int errno;
 
-void my_launcher(int confd, void *args) {
-    int nbytes;
-    char auxstr[STR_LEN], resp[STR_LEN];
-
-    fprintf(stdout, "Processing request...\n");
-    if ( (nbytes = recv(confd, &auxstr, (STR_LEN - 1)*sizeof(char), 0)) < 0) {
-        fprintf(stderr, "Error processing request: %s\n", strerror(errno));
-        return;
-    }
-    auxstr[nbytes] = '\0';
-
-    sprintf(resp, "\'%s\' has %ld characters.", auxstr, strlen(auxstr));
-    if (send(confd, &resp, (strlen(resp) + 1)*sizeof(char), 0) < 0) {
-        fprintf(stderr, "Error sending result\n");
-        return;
-    }
-
-    fprintf(stdout, "Exiting service...\n");
-}
-
 void http_parser_test(int sock, void *args) {
     char buf[4096];
     const char *method, *path;
@@ -48,16 +28,17 @@ void http_parser_test(int sock, void *args) {
     while (1) {
         fprintf(stdout, "Processing HTTP request...\n");
         /* read the request */
-        while ((rret = read(sock, buf + buflen, sizeof(buf) - buflen)) == -1 && errno == EINTR)
-            ;
+        while ( (rret = recv(sock, buf + buflen, sizeof(buf) - buflen, 0)) == -1
+                && errno == EINTR);
+
         if (rret <= 0)
             return ;
         prevbuflen = buflen;
         buflen += rret;
         /* parse the request */
         num_headers = sizeof(headers) / sizeof(headers[0]);
-        pret = phr_parse_request(buf, buflen, &method, &method_len, &path, &path_len,
-                &minor_version, headers, &num_headers, prevbuflen);
+        pret = phr_parse_request(buf, buflen, &method, &method_len, &path,
+                &path_len, &minor_version, headers, &num_headers, prevbuflen);
         if (pret > 0)
             break; /* successfully parsed the request */
         else if (pret == -1)
@@ -83,9 +64,9 @@ void http_parser_test(int sock, void *args) {
 int main() {
     int listenfd;
 
-    listenfd = initiate_tcp_server(8080, 10, 0);
+    listenfd = initiate_tcp_server(8080, 1, 0);
 
-    accept_connections_fork(listenfd, my_launcher, NULL, 5);
+    accept_connections(listenfd, http_parser_test, NULL);
 
     exit(EXIT_SUCCESS);
 }
