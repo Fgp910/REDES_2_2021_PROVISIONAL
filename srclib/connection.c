@@ -33,7 +33,7 @@ typedef struct {
 
 /* Funciones Privadas */
 void sig_int(int signo);             /* Handler de SIGINT */
-void stop_server_fork(int status);   /* Detiene el servidor multiproceso */
+void stop_server_fork(int status, int max_children);   /* Detiene el servidor multiproceso */
 void thread_serve(void *args);       /* Funcion para hilos de servicio */
 void stop_server_thread(int sockfd); /* Detiene el servidor multihilo */
 void pool_process_serve(int sockfd, service_launcher_t launch_service,
@@ -113,7 +113,7 @@ void accept_connections(int sockfd, service_launcher_t launch_service,
 void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         void *args, int max_children) {
     int confd, conlen;
-    int i = 0;
+    int i = 0, index = 0;
     struct sockaddr connection;
     pid_t pid;
 
@@ -151,25 +151,35 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
 
     conlen = sizeof(connection);
 
-    for ( ; ; ) {
+    for (i = 0; ; i++) {
         sem_wait(fork_sem); /* Espera a que finalicen los max_children hijos */
-        if (sig_flag == SIGINT) stop_server_fork(EXIT_SUCCESS);
+        if (sig_flag == SIGINT) break;
 
-        /* Asignacion de una posicion en el array */
-        for (i = 0; i < max_children; i++)
-            if (children_pid[i] == 0) break;
+        if (i < max_children) {
+            index = i;
+        }
+        else {
+            pid = wait(NULL);
+            for (i = 0; i < max_children; i++) {
+                if (children_pid[i] == pid) {
+                    index = i;
+                    children_pid[index] = 0;
+                    break;
+                }
+            }
+        }
 
         if ( (confd = accept(sockfd, &connection, (socklen_t*)&conlen)) < 0) {
             if (sig_flag == SIGINT)
                 break;
             logger(ERR, "Error accepting connection: %s\n", strerror(errno));
-            stop_server_fork(EXIT_FAILURE);
+            stop_server_fork(EXIT_FAILURE, max_children);
         }
 
         if ( (pid = fork()) < 0) {
             logger(ERR, "Error spawning child: %s\n", strerror(errno));
             close(confd);
-            stop_server_fork(EXIT_FAILURE);
+            stop_server_fork(EXIT_FAILURE, max_children);
         }
 
         else if (pid == 0) {
@@ -177,21 +187,14 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
             close(confd);
             sem_post(fork_sem); /* Libera al padre del sem_wait */
             sem_close(fork_sem);
-            children_pid[i] = 0;
             exit(EXIT_SUCCESS);
         }
-
-        children_pid[i] = pid;
+        children_pid[index] = pid;
         close(confd);
     }
 
-    for (i = 0; i < max_children; i++) {
-        if (children_pid[i] > 0) {
-            if (kill(children_pid[i], SIGKILL) == -1)
-                logger(ERR, "Error killing child process\n");
-        }
-    }
-    stop_server_fork(EXIT_SUCCESS);
+    /* Liberación de recursos */
+    stop_server_fork(EXIT_SUCCESS, max_children);
 }
 
 void accept_connections_thread(int sockfd, service_launcher_t launch_service,
@@ -291,7 +294,7 @@ void accept_connections_pool_process(int sockfd, service_launcher_t
         exit(EXIT_FAILURE);
     }
 
-    /* Semaforo para evitar aceptar mas de max_children conexiones */
+    /* Semaforo para evitar errores al aceptar conexiones */
     if ((pool_process_mutex = sem_open("/pool_process_sem", O_CREAT | O_EXCL,
                     S_IRUSR | S_IWUSR, 1)) == SEM_FAILED) {
         logger(ERR, "Error creating semaphore: %s\n", strerror(errno));
@@ -385,8 +388,19 @@ void accept_connections_pool_thread(int sockfd, service_launcher_t
 /* Implementacion de Funciones Privadas */
 void sig_int(int signo) { sig_flag = SIGINT; }
 
-void stop_server_fork(int status) {
+void stop_server_fork(int status, int max_children) {
+    int i = 0;
+
     logger(INFO, "\nStopping server...\n");
+
+    for (i = 0; i < max_children; i++) {
+        if (children_pid[i] > 0) {
+            if (kill(children_pid[i], SIGKILL) == -1)
+                logger(ERR, "Error killing child process\n");
+        }
+    }
+    for (i = 0; i < max_children; i++) 
+        wait(NULL);
 
     free(children_pid);
     sem_close(fork_sem);
@@ -472,6 +486,8 @@ void stop_server_pool_process(int max_children, int sockfd, sem_t* pool_process_
             status = EXIT_FAILURE;
         }
     }
+    for (i = 0; i < max_children; i++)
+        wait(NULL);
     free(children_pid);
     close(sockfd);
     sem_close(pool_process_mutex);
