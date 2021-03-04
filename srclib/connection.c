@@ -294,7 +294,7 @@ void accept_connections_pool_process(int sockfd, service_launcher_t
         exit(EXIT_FAILURE);
     }
 
-    /* Semaforo para evitar aceptar mas de max_children conexiones */
+    /* Semaforo para evitar errores al aceptar conexiones */
     if ((pool_process_mutex = sem_open("/pool_process_sem", O_CREAT | O_EXCL,
                     S_IRUSR | S_IWUSR, 1)) == SEM_FAILED) {
         logger(ERR, "Error creating semaphore: %s\n", strerror(errno));
@@ -488,6 +488,8 @@ void stop_server_pool_process(int max_children, int sockfd, sem_t* pool_process_
             status = EXIT_FAILURE;
         }
     }
+    for (i = 0; i < max_children; i++)
+        wait(NULL);
     free(children_pid);
     close(sockfd);
     sem_close(pool_process_mutex);
