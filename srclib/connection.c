@@ -161,7 +161,7 @@ void accept_connections_fork(int sockfd, service_launcher_t launch_service,
         else {
             pid = wait(NULL);
             for (i = 0; i < max_children; i++) {
-                if (children_pid == pid) {
+                if (children_pid[i] == pid) {
                     index = i;
                     children_pid[index] = 0;
                     break;
