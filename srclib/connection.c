@@ -398,15 +398,13 @@ void thread_serve(void *args) {
 
     if (block_sigint_thread(NULL) < 0) {
         logger(ERR, "Thread: Error blocking SIGINT: %s\n", strerror(errno));
-    }
-
-    if (pthread_detach(pthread_self())) {
+    } else if (pthread_detach(pthread_self())) {
         logger(ERR, "Thread: Error detaching self: %s\n", strerror(errno));
     } else {
         cast->launch_service(cast->sockfd, cast->service_args);
-        close(cast->sockfd);
     }
 
+    close(cast->sockfd);
     sem_post(thread_sem);
     pthread_exit(NULL);
 }
